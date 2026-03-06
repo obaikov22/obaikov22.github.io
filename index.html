@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oleg Baikov — Flutter Developer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080a14;
+    --surface: #0f1120;
+    --surface2: #161828;
+    --border: #1e2240;
+    --indigo: #6c63ff;
+    --indigo-dim: #6c63ff18;
+    --mint: #3fffa2;
+    --mint-dim: #3fffa212;
+    --amber: #ffb347;
+    --purple: #a259ff;
+    --pink: #ff6bbd;
+    --text: #e8eaf6;
+    --text-muted: #565d7e;
+    --text-dim: #8a90b4;
+    --radius: 16px;
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Sora', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ---- NOISE TEXTURE ---- */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  /* ---- GRID BACKGROUND ---- */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px;
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .content { position: relative; z-index: 1; }
+
+  /* ---- GLOW ORBS ---- */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .orb-1 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, #6c63ff18, transparent 70%);
+    top: -100px; left: -150px;
+  }
+
+  .orb-2 {
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, #3fffa210, transparent 70%);
+    bottom: 200px; right: -100px;
+  }
+
+  .orb-3 {
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, #a259ff14, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* ---- NAV ---- */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 16px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #080a14cc;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 1px;
+  }
+
+  .nav-logo span { color: var(--mint); }
+
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-decoration: none;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--text); }
+
+  /* ---- HERO ---- */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 120px 40px 80px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .hero-inner {
+    max-width: 680px;
+  }
+
+  .hero-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--mint-dim);
+    border: 1px solid #3fffa225;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--mint);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 28px;
+    animation: fadeUp 0.8s ease both;
+  }
+
+  .hero-tag::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--mint);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .hero h1 {
+    font-size: clamp(42px, 6vw, 72px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -2px;
+    margin-bottom: 20px;
+    animation: fadeUp 0.8s 0.1s ease both;
+  }
+
+  .hero h1 .name-grad {
+    background: linear-gradient(135deg, #e8eaf6 0%, #6c63ff 50%, #3fffa2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-size: 17px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    max-width: 520px;
+    margin-bottom: 40px;
+    font-weight: 400;
+    animation: fadeUp 0.8s 0.2s ease both;
+  }
+
+  .hero-sub strong { color: var(--text); font-weight: 600; }
+
+  .hero-cta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    animation: fadeUp 0.8s 0.3s ease both;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    font-family: 'Sora', sans-serif;
+    cursor: pointer;
+    border: none;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--indigo), #4ecdc4);
+    color: white;
+    box-shadow: 0 0 30px #6c63ff30;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 40px #6c63ff50;
+  }
+
+  .btn-ghost {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--indigo);
+    color: var(--text);
+    transform: translateY(-2px);
+  }
+
+  /* ---- STATS ROW ---- */
+  .stats {
+    display: flex;
+    gap: 0;
+    margin-top: 60px;
+    border-top: 1px solid var(--border);
+    padding-top: 40px;
+    animation: fadeUp 0.8s 0.4s ease both;
+  }
+
+  .stat {
+    flex: 1;
+    padding-right: 32px;
+    border-right: 1px solid var(--border);
+    margin-right: 32px;
+  }
+
+  .stat:last-child { border-right: none; margin-right: 0; }
+
+  .stat-num {
+    font-size: 36px;
+    font-weight: 800;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, var(--indigo), var(--mint));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ---- SECTIONS ---- */
+  section {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 100px 40px;
+  }
+
+  .section-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--indigo);
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 14px;
+  }
+
+  .section-title {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 48px;
+    line-height: 1.1;
+  }
+
+  /* ---- PROJECTS ---- */
+  .projects-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 700px) {
+    .projects-grid { grid-template-columns: 1fr; }
+    nav { padding: 14px 20px; }
+    .nav-links { display: none; }
+    .hero { padding: 100px 24px 60px; }
+    section { padding: 80px 24px; }
+    .stats { flex-direction: column; gap: 24px; }
+    .stat { border-right: none; padding-right: 0; margin-right: 0; border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 0; }
+    .stat:last-child { border-bottom: none; }
+  }
+
+  .project-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+
+  .project-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 0% 0%, var(--card-glow, #6c63ff10), transparent 60%);
+    pointer-events: none;
+  }
+
+  .project-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--card-accent, var(--indigo));
+    box-shadow: 0 20px 60px #00000040;
+  }
+
+  .project-card.card-pudu { --card-glow: #6c63ff12; --card-accent: var(--indigo); }
+  .project-card.card-alina { --card-glow: #a259ff12; --card-accent: var(--purple); }
+
+  .card-icon {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+
+  .icon-pudu { background: var(--indigo-dim); }
+  .icon-alina { background: #a259ff18; }
+
+  .card-title {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 10px;
+  }
+
+  .card-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    margin-bottom: 20px;
+  }
+
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 24px;
+  }
+
+  .tag {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.5px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  .card-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    letter-spacing: 0.5px;
+  }
+
+  .project-card.card-pudu .card-link:hover { color: var(--indigo); }
+  .project-card.card-alina .card-link:hover { color: var(--purple); }
+
+  .card-accent-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .line-pudu { background: linear-gradient(90deg, var(--indigo), var(--mint)); }
+  .line-alina { background: linear-gradient(90deg, var(--purple), var(--pink)); }
+
+  /* ---- ABOUT ---- */
+  .about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media (max-width: 700px) {
+    .about-grid { grid-template-columns: 1fr; }
+  }
+
+  .about-text {
+    font-size: 16px;
+    color: var(--text-dim);
+    line-height: 1.8;
+    font-weight: 400;
+  }
+
+  .about-text p { margin-bottom: 16px; }
+  .about-text p:last-child { margin-bottom: 0; }
+  .about-text strong { color: var(--text); font-weight: 600; }
+
+  .skills-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .skill-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color 0.2s;
+  }
+
+  .skill-item:hover { border-color: var(--indigo); }
+
+  .skill-icon { font-size: 20px; flex-shrink: 0; }
+  .skill-name { font-size: 13px; font-weight: 600; }
+  .skill-level {
+    margin-left: auto;
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text-muted);
+    background: var(--surface2);
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  /* ---- CONTACT ---- */
+  .contact-inner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .contact-inner::before {
+    content: '';
+    position: absolute;
+    top: -100px; left: 50%;
+    transform: translateX(-50%);
+    width: 400px; height: 300px;
+    background: radial-gradient(ellipse, #6c63ff15, transparent 70%);
+    pointer-events: none;
+  }
+
+  .contact-inner h2 {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 12px;
+  }
+
+  .contact-inner p {
+    font-size: 15px;
+    color: var(--text-dim);
+    margin-bottom: 36px;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .contact-links {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* ---- FOOTER ---- */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .footer-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .footer-text span { color: var(--mint); }
+
+  /* ---- ANIMATIONS ---- */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .reveal-delay-1 { transition-delay: 0.1s; }
+  .reveal-delay-2 { transition-delay: 0.2s; }
+  .reveal-delay-3 { transition-delay: 0.3s; }
+
+  /* cursor glow */
+  .cursor-glow {
+    position: fixed;
+    width: 300px; height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #6c63ff08, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    transform: translate(-50%, -50%);
+    transition: left 0.15s ease, top 0.15s ease;
+  }
+</style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="cursor-glow" id="cursorGlow"></div>
+
+<div class="content">
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-logo">ob<span>.</span>dev</div>
+    <ul class="nav-links">
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#about">About</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="hero-tag">Available for freelance work</div>
+      <h1><span class="name-grad">Oleg Baikov</span><br>Flutter Developer</h1>
+      <p class="hero-sub">
+        I build <strong>mobile apps for Android</strong> — clean, functional, and built to solve real problems.
+        Based in <strong>London</strong>, turning ideas into apps one commit at a time.
+      </p>
+      <div class="hero-cta">
+        <a href="#projects" class="btn btn-primary">View Projects →</a>
+        <a href="#contact" class="btn btn-ghost">Get in touch</a>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-num">2</div>
+          <div class="stat-label">Apps built</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">19</div>
+          <div class="stat-label">Robots managed</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">∞</div>
+          <div class="stat-label">Curiosity</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROJECTS -->
+  <section id="projects">
+    <div class="section-eyebrow reveal">Work</div>
+    <div class="section-title reveal reveal-delay-1">Things I've built</div>
+
+    <div class="projects-grid">
+
+      <!-- PUDU-OPS -->
+      <div class="project-card card-pudu reveal reveal-delay-1">
+        <div class="card-accent-line line-pudu"></div>
+        <div class="card-icon icon-pudu">🤖</div>
+        <div class="card-title">PUDU-OPS</div>
+        <div class="card-desc">
+          A shift management app for a fleet of 19 PUDU CC1 cleaning robots at Bloomberg London.
+          Tracks active runs with live countdown timers, shift templates, and push notifications —
+          built to replace spreadsheets and manual tracking entirely.
+        </div>
+        <div class="card-tags">
+          <span class="tag">Flutter</span>
+          <span class="tag">Riverpod</span>
+          <span class="tag">Hive</span>
+          <span class="tag">Android</span>
+          <span class="tag">Foreground Service</span>
+        </div>
+        <a href="https://github.com/obaikov22/pudu-ops" target="_blank" class="card-link">
+          View on GitHub →
+        </a>
+      </div>
+
+      <!-- ALINANTWORK -->
+      <div class="project-card card-alina reveal reveal-delay-2">
+        <div class="card-accent-line line-alina"></div>
+        <div class="card-icon icon-alina">📅</div>
+        <div class="card-title">AlinaNTWork</div>
+        <div class="card-desc">
+          A team leave tracker for a night shift supervisor managing a team of 15 people.
+          Tracks annual leave, sick days, bank holidays, and birthdays — with a weekly calendar view,
+          conflict detection, and Firebase cloud sync.
+        </div>
+        <div class="card-tags">
+          <span class="tag">Flutter</span>
+          <span class="tag">Firebase</span>
+          <span class="tag">Firestore</span>
+          <span class="tag">Riverpod</span>
+          <span class="tag">Android</span>
+        </div>
+        <a href="https://github.com/obaikov22/alinantwork" target="_blank" class="card-link">
+          View on GitHub →
+        </a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section id="about">
+    <div class="section-eyebrow reveal">About</div>
+    <div class="section-title reveal reveal-delay-1">A bit about me</div>
+
+    <div class="about-grid">
+      <div class="about-text reveal reveal-delay-1">
+        <p>
+          I'm <strong>Oleg</strong>, 28, living in London since 2022. By day I work as a
+          <strong>robotics operator at Atlas FM</strong>, managing a fleet of autonomous
+          cleaning robots at Bloomberg's offices.
+        </p>
+        <p>
+          Mobile development started as a way to solve my own problems at work — I needed
+          better tools to manage my robots, so I built them myself. That first app turned
+          into a real project, and now I'm hooked.
+        </p>
+        <p>
+          I enjoy the process of turning a real problem into a clean, working solution.
+          I'm <strong>available for freelance Android projects</strong> — especially tools
+          and utilities that make people's work lives easier.
+        </p>
+      </div>
+
+      <div class="skills-list reveal reveal-delay-2">
+        <div class="skill-item">
+          <div class="skill-icon">📱</div>
+          <div class="skill-name">Flutter & Dart</div>
+          <div class="skill-level">Primary</div>
+        </div>
+        <div class="skill-item">
+          <div class="skill-icon">🔥</div>
+          <div class="skill-name">Firebase & Firestore</div>
+          <div class="skill-level">Proficient</div>
+        </div>
+        <div class="skill-item">
+          <div class="skill-icon">🗄️</div>
+          <div class="skill-name">Hive & Riverpod</div>
+          <div class="skill-level">Proficient</div>
+        </div>
+        <div class="skill-item">
+          <div class="skill-icon">🤖</div>
+          <div class="skill-name">Android (Native)</div>
+          <div class="skill-level">Intermediate</div>
+        </div>
+        <div class="skill-item">
+          <div class="skill-icon">🐙</div>
+          <div class="skill-name">Git & GitHub</div>
+          <div class="skill-level">Comfortable</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section id="contact">
+    <div class="contact-inner reveal">
+      <h2>Let's work together</h2>
+      <p>Have an app idea? Looking for a Flutter developer for a project? I'd love to hear from you.</p>
+      <div class="contact-links">
+        <a href="mailto:obaikov22@gmail.com" class="btn btn-primary">
+          ✉ obaikov22@gmail.com
+        </a>
+        <a href="https://github.com/obaikov22" target="_blank" class="btn btn-ghost">
+          ⌥ github.com/obaikov22
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-text">© 2026 Oleg Baikov <span>·</span> London, UK</div>
+    <div class="footer-text">Built with HTML <span>·</span> No frameworks needed</div>
+  </footer>
+
+</div>
+
+<script>
+  // Cursor glow
+  const glow = document.getElementById('cursorGlow');
+  document.addEventListener('mousemove', e => {
+    glow.style.left = e.clientX + 'px';
+    glow.style.top = e.clientY + 'px';
+  });
+
+  // Scroll reveal
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  reveals.forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
