@@ -564,21 +564,17 @@
     transform: translateY(0);
   }
 
+  /* Fallback: if JS fails, show everything */
+  .no-js .reveal {
+    opacity: 1;
+    transform: none;
+  }
+
   .reveal-delay-1 { transition-delay: 0.1s; }
   .reveal-delay-2 { transition-delay: 0.2s; }
   .reveal-delay-3 { transition-delay: 0.3s; }
 
-  /* cursor glow */
-  .cursor-glow {
-    position: fixed;
-    width: 300px; height: 300px;
-    border-radius: 50%;
-    background: radial-gradient(circle, #6c63ff08, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
-    top: 0; left: 0;
-    will-change: transform;
-  }
+
 </style>
 </head>
 <body>
@@ -586,7 +582,7 @@
 <div class="orb orb-1"></div>
 <div class="orb orb-2"></div>
 <div class="orb orb-3"></div>
-<div class="cursor-glow" id="cursorGlow"></div>
+
 
 <div class="content">
 
@@ -745,8 +741,8 @@
       <h2>Let's work together</h2>
       <p>Have an app idea? Looking for a Flutter developer for a project? I'd love to hear from you.</p>
       <div class="contact-links">
-        <a href="/cdn-cgi/l/email-protection#c4aba6a5adafabb2f6f684a3a9a5ada8eaa7aba9" class="btn btn-primary">
-          ✉ <span class="__cf_email__" data-cfemail="78171a191113170e4a4a381f15191114561b1715">[email&#160;protected]</span>
+        <a href="mailto:obaikov22@gmail.com" class="btn btn-primary">
+          ✉ obaikov22@gmail.com
         </a>
         <a href="https://github.com/obaikov22" target="_blank" class="btn btn-ghost">
           ⌥ github.com/obaikov22
@@ -763,20 +759,35 @@
 
 </div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-  // Cursor glow — smooth 60fps with lerp
-  const glow = document.getElementById('cursorGlow');
-  let mx = 0, my = 0, cx = 0, cy = 0;
-  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
-  function animateGlow() {
-    cx += (mx - cx) * 0.08;
-    cy += (my - cy) * 0.08;
-    glow.style.transform = `translate(${cx - 150}px, ${cy - 150}px)`;
-    requestAnimationFrame(animateGlow);
-  }
-  animateGlow();
-
+<script>
   // Scroll reveal
   const reveals = document.querySelectorAll('.reveal');
+
+  // Immediately show elements in viewport on load
+  function checkReveals() {
+    reveals.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight + 100) {
+        el.classList.add('visible');
+      }
+    });
+  }
+
   const observer = new IntersectionObserver(entries => {
-    entries
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+
+  reveals.forEach(el => observer.observe(el));
+
+  // Run on load and scroll
+  window.addEventListener('load', checkReveals);
+  window.addEventListener('scroll', checkReveals);
+  checkReveals();
+</script>
+</body>
+</html>
