@@ -314,11 +314,12 @@
   let isFrightened = false;
   let isSpinning = false;
   let sleepTimer = null;
-  let lastMouseX = 0, lastMouseY = 0, lastMouseTime = Date.now();
-  let shakeHistory = [];
   let longPressTimer = null;
   let lastTapTime = 0;
-  const isMobile = () => window.matchMedia('(hover: none)').matches;
+  let shakeHistory = [];
+  let lastMouseX = 0, lastMouseY = 0, lastMouseTime = Date.now();
+
+  const isMobile = () => window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
   const robotWrap = document.getElementById('robotWrap');
   const robotBubble = document.getElementById('robotBubble');
@@ -330,8 +331,8 @@
   const robotContainer = document.getElementById('robotContainer');
 
   const eyeData = [
-    { el: pupilL, shine: shineL, bx: 35.5, by: 56.3, maxR: 8 },
-    { el: pupilR, shine: shineR, bx: 74.3, by: 56.4, maxR: 8 },
+    { el: pupilL, shine: shineL, bx: 35.5, by: 56.3 },
+    { el: pupilR, shine: shineR, bx: 74.3, by: 56.4 },
   ];
 
   // ---- STYLES ----
@@ -343,13 +344,12 @@
     @keyframes robotSpin { 0%{transform:rotate(0deg) scale(1)} 50%{transform:rotate(180deg) scale(1.15)} 100%{transform:rotate(360deg) scale(1)} }
     @keyframes robotTickle { 0%,100%{transform:rotate(0) scale(1)} 20%{transform:rotate(-5deg) scale(1.05)} 40%{transform:rotate(5deg) scale(1.08)} 60%{transform:rotate(-4deg) scale(1.05)} 80%{transform:rotate(4deg) scale(1.03)} }
     @keyframes particleFly { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--px),var(--py)) scale(0);opacity:0} }
-    @keyframes flashOverlay { 0%{opacity:0.4} 100%{opacity:0} }
     .particle { position:fixed; border-radius:50%; pointer-events:none; animation:particleFly 0.7s ease-out forwards; z-index:9999; }
     .robot-wrap.spinning .robot-container { animation: robotSpin 0.6s cubic-bezier(0.23,1,0.32,1) forwards !important; }
   `;
   document.head.appendChild(extraStyle);
 
-  // ---- ZZZ ELEMENT ----
+  // ---- ZZZ ----
   const zzzEl = document.createElement('div');
   zzzEl.innerHTML = 'z<span>z</span><span>z</span>';
   zzzEl.style.cssText = `position:absolute;top:-28px;right:-8px;font-size:18px;font-weight:800;color:#a259ff;font-family:'DM Mono',monospace;letter-spacing:2px;opacity:0;transition:opacity 0.5s;pointer-events:none;line-height:1;text-shadow:0 0 10px rgba(162,89,255,0.8);`;
@@ -366,13 +366,144 @@
     if (duration < 99999) robotWrap._t = setTimeout(() => robotBubble.classList.remove('visible'), duration);
   }
 
+  // ---- MOVE EYES (shared) ----
+  // Smooth interpolation state
+  let targetEyeX = 0, targetEyeY = 0;
+  let currentEyeX = 0, currentEyeY = 0;
+  const MAX_MOVE = 2.8;
+
+  function applyEyes(nx, ny) {
+    eyeData.forEach(eye => {
+      eye.el.setAttribute('cx', eye.bx + nx);
+      eye.el.setAttribute('cy', eye.by + ny);
+      eye.shine.setAttribute('cx', eye.bx + nx + 2.5);
+      eye.shine.setAttribute('cy', eye.by + ny - 3.2);
+    });
+  }
+
+  // Smooth animation loop
+  function eyeLoop() {
+    currentEyeX += (targetEyeX - currentEyeX) * 0.08;
+    currentEyeY += (targetEyeY - currentEyeY) * 0.08;
+    if (!isAsleep && !isFrightened) applyEyes(currentEyeX, currentEyeY);
+    requestAnimationFrame(eyeLoop);
+  }
+  eyeLoop();
+
+  // ---- DESKTOP: mouse tracking ----
+  document.addEventListener('mousemove', e => {
+    if (isMobile()) return;
+    if (isAsleep) wakeUp();
+    resetSleepTimer();
+
+    // Shake detection
+    const now = Date.now();
+    const dt = Math.max(1, now - lastMouseTime);
+    const speed = Math.sqrt(Math.pow(e.clientX-lastMouseX,2)+Math.pow(e.clientY-lastMouseY,2)) / dt;
+    shakeHistory.push({ speed, time: now });
+    shakeHistory = shakeHistory.filter(s => now - s.time < 400);
+    const avg = shakeHistory.reduce((a,b) => a + b.speed, 0) / shakeHistory.length;
+    if (avg > 3 && shakeHistory.length > 5) { frighten(); shakeHistory = []; }
+    lastMouseX = e.clientX; lastMouseY = e.clientY; lastMouseTime = now;
+
+    if (isAsleep || isFrightened) return;
+
+    const rect = robotEyes.getBoundingClientRect();
+    const sx = rect.width / 110, sy = rect.height / 140;
+    // Use left eye as reference center
+    const ex = rect.left + eyeData[0].bx * sx;
+    const ey = rect.top + eyeData[0].by * sy;
+    const dx = e.clientX - ex, dy = e.clientY - ey;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    targetEyeX = dist > 0 ? (dx/dist)*Math.min(MAX_MOVE, dist/18) : 0;
+    targetEyeY = dist > 0 ? (dy/dist)*Math.min(MAX_MOVE, dist/18) : 0;
+  });
+
+  // ---- MOBILE: eyes browse the page ----
+  // Target elements on the page to "look at"
+  const browseTargets = [
+    '#projects', '#about', '#contact',
+    '.card-title', '.section-title', '.hero h1',
+    '.stat-num', '.skill-name', '.btn-primary'
+  ];
+
+  let browseIndex = 0;
+  let mobileEyeInterval = null;
+
+  function getElementCenter(selector) {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    // Only target visible elements
+    if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  }
+
+  function browseNextElement() {
+    if (!isMobile() || isAsleep || isFrightened || isSpinning) return;
+
+    // Try to find a visible element to look at
+    let attempts = 0;
+    let target = null;
+    while (!target && attempts < browseTargets.length) {
+      browseIndex = (browseIndex + 1) % browseTargets.length;
+      target = getElementCenter(browseTargets[browseIndex]);
+      attempts++;
+    }
+
+    if (!target) {
+      // Nothing visible — look somewhere on screen gently
+      target = {
+        x: window.innerWidth * (0.2 + Math.random() * 0.6),
+        y: window.innerHeight * (0.2 + Math.random() * 0.6),
+      };
+    }
+
+    // Convert screen position to eye offset (-MAX_MOVE .. MAX_MOVE)
+    const robotRect = robotEyes.getBoundingClientRect();
+    const robotCX = robotRect.left + robotRect.width / 2;
+    const robotCY = robotRect.top + robotRect.height / 2;
+    const dx = target.x - robotCX;
+    const dy = target.y - robotCY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    targetEyeX = dist > 0 ? (dx/dist) * MAX_MOVE : 0;
+    targetEyeY = dist > 0 ? (dy/dist) * MAX_MOVE : 0;
+  }
+
+  function startMobileBrowsing() {
+    if (mobileEyeInterval) return;
+    // Look at a new element every 2-3 seconds
+    browseNextElement();
+    mobileEyeInterval = setInterval(() => {
+      browseNextElement();
+    }, 2000 + Math.random() * 1000);
+  }
+
+  function stopMobileBrowsing() {
+    clearInterval(mobileEyeInterval);
+    mobileEyeInterval = null;
+  }
+
+  // Also update browse target on scroll (so robot follows what's on screen)
+  window.addEventListener('scroll', () => {
+    if (!isMobile()) return;
+    resetSleepTimer();
+    if (isAsleep) wakeUp();
+    // Look toward scroll direction immediately
+    browseNextElement();
+  }, { passive: true });
+
   // ---- SLEEP ----
   function goSleep() {
     if (isAsleep || isFrightened || isSpinning) return;
     isAsleep = true;
+    stopMobileBrowsing();
     zzzEl.style.opacity = '1';
     robotContainer.style.animation = 'robotSleep 2s ease-in-out infinite';
-    eyeData.forEach(e => { e.el.setAttribute('ry', '1.5'); e.el.setAttribute('rx', '8'); });
+    targetEyeX = 0; targetEyeY = 1.5; // eyes droop down
     showBubble('Zzz... \uD83D\uDE34', 99999);
   }
 
@@ -381,14 +512,14 @@
     isAsleep = false;
     zzzEl.style.opacity = '0';
     robotContainer.style.animation = 'robotFloat 3s ease-in-out infinite';
-    eyeData.forEach(e => { e.el.removeAttribute('ry'); e.el.removeAttribute('rx'); });
     if (greet) showBubble("Oh! You're back! \uD83E\uDD16", 2500);
     resetSleepTimer();
+    if (isMobile()) startMobileBrowsing();
   }
 
   function resetSleepTimer() {
     clearTimeout(sleepTimer);
-    if (!isAsleep) sleepTimer = setTimeout(goSleep, 12000);
+    if (!isAsleep) sleepTimer = setTimeout(goSleep, 14000);
   }
 
   // ---- FRIGHT ----
@@ -410,16 +541,13 @@
     if (isAsleep || isSpinning) return;
     robotContainer.style.animation = 'robotTickle 0.5s ease';
     showBubble("Hehe, stop it! \uD83D\uDE02", 2000);
-    // Flash eyes pink
     eyeData.forEach(e => { e.el.style.fill = '#ff6bbd'; });
+    const rect = robotContainer.getBoundingClientRect();
+    spawnParticles(rect.left + rect.width/2, rect.top + rect.height/3);
     setTimeout(() => {
       robotContainer.style.animation = 'robotFloat 3s ease-in-out infinite';
       eyeData.forEach(e => { e.el.style.fill = ''; });
     }, 600);
-    spawnParticles(
-      robotContainer.getBoundingClientRect().left + robotContainer.offsetWidth/2,
-      robotContainer.getBoundingClientRect().top + robotContainer.offsetHeight/3
-    );
   }
 
   // ---- SPIN ----
@@ -428,10 +556,8 @@
     isSpinning = true;
     robotWrap.classList.add('spinning');
     showBubble("Weeee! \uD83C\uDF00", 2000);
-    spawnParticles(
-      robotContainer.getBoundingClientRect().left + robotContainer.offsetWidth/2,
-      robotContainer.getBoundingClientRect().top + robotContainer.offsetHeight/2
-    );
+    const rect = robotContainer.getBoundingClientRect();
+    spawnParticles(rect.left + rect.width/2, rect.top + rect.height/2);
     setTimeout(() => {
       isSpinning = false;
       robotWrap.classList.remove('spinning');
@@ -448,122 +574,26 @@
       const size = 5 + Math.random() * 7;
       const angle = (Math.PI * 2 / 14) * i + (Math.random() - 0.5) * 0.4;
       const dist = 50 + Math.random() * 70;
-      p.style.cssText = `width:${size}px;height:${size}px;background:${colors[Math.floor(Math.random()*colors.length)]};left:${x - size/2}px;top:${y - size/2}px;--px:${Math.cos(angle)*dist}px;--py:${Math.sin(angle)*dist - 20}px;box-shadow:0 0 6px currentColor;`;
+      p.style.cssText = `width:${size}px;height:${size}px;background:${colors[Math.floor(Math.random()*colors.length)]};left:${x-size/2}px;top:${y-size/2}px;--px:${Math.cos(angle)*dist}px;--py:${Math.sin(angle)*dist-20}px;box-shadow:0 0 6px currentColor;`;
       document.body.appendChild(p);
       setTimeout(() => p.remove(), 750);
     }
   }
 
-  // ---- EYE TRACKING: MOUSE (desktop) ----
-  document.addEventListener('mousemove', e => {
-    if (isAsleep) wakeUp();
-    resetSleepTimer();
-
-    const now = Date.now();
-    const dt = Math.max(1, now - lastMouseTime);
-    const dx = e.clientX - lastMouseX;
-    const dy = e.clientY - lastMouseY;
-    const speed = Math.sqrt(dx*dx + dy*dy) / dt;
-    shakeHistory.push({ speed, time: now });
-    shakeHistory = shakeHistory.filter(s => now - s.time < 400);
-    const avg = shakeHistory.reduce((a,b) => a + b.speed, 0) / shakeHistory.length;
-    if (avg > 3 && shakeHistory.length > 5) { frighten(); shakeHistory = []; }
-    lastMouseX = e.clientX; lastMouseY = e.clientY; lastMouseTime = now;
-
-    if (isAsleep || isFrightened) return;
-    const rect = robotEyes.getBoundingClientRect();
-    const sx = rect.width / 110, sy = rect.height / 140;
-    eyeData.forEach(eye => {
-      const ex = rect.left + eye.bx * sx, ey = rect.top + eye.by * sy;
-      const d = Math.sqrt(Math.pow(e.clientX-ex,2)+Math.pow(e.clientY-ey,2));
-      const max = eye.maxR * 0.55;
-      const nx = d > 0 ? ((e.clientX-ex)/d)*Math.min(max, d/18) : 0;
-      const ny = d > 0 ? ((e.clientY-ey)/d)*Math.min(max, d/18) : 0;
-      eye.el.setAttribute('cx', eye.bx + nx);
-      eye.el.setAttribute('cy', eye.by + ny);
-      eye.shine.setAttribute('cx', eye.bx + nx + 2.5);
-      eye.shine.setAttribute('cy', eye.by + ny - 3.2);
-    });
-  });
-
-  // ---- GYROSCOPE (mobile eye tracking) ----
-  let gyroPermissionAsked = false;
-  function startGyro() {
-    if (typeof DeviceOrientationEvent === 'undefined') return;
-    const handler = e => {
-      if (isAsleep || isFrightened) return;
-      const beta  = Math.max(-30, Math.min(30, e.beta  || 0)); // tilt front/back
-      const gamma = Math.max(-30, Math.min(30, e.gamma || 0)); // tilt left/right
-      const nx = (gamma / 30) * 2.5;
-      const ny = (beta  / 30) * 2.5;
-      eyeData.forEach(eye => {
-        eye.el.setAttribute('cx', eye.bx + nx);
-        eye.el.setAttribute('cy', eye.by + ny);
-        eye.shine.setAttribute('cx', eye.bx + nx + 2.5);
-        eye.shine.setAttribute('cy', eye.by + ny - 3.2);
-      });
-    };
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // iOS 13+ needs permission
-      if (!gyroPermissionAsked) {
-        gyroPermissionAsked = true;
-        DeviceOrientationEvent.requestPermission().then(state => {
-          if (state === 'granted') window.addEventListener('deviceorientation', handler);
-        }).catch(() => {});
-      }
-    } else {
-      window.addEventListener('deviceorientation', handler);
-    }
-  }
-
-  // ---- PHONE SHAKE (devicemotion) ----
-  if (typeof DeviceMotionEvent !== 'undefined') {
-    let lastShakeTime = 0;
-    const motionHandler = e => {
-      const acc = e.accelerationIncludingGravity;
-      if (!acc) return;
-      const total = Math.sqrt((acc.x||0)**2 + (acc.y||0)**2 + (acc.z||0)**2);
-      const now = Date.now();
-      if (total > 25 && now - lastShakeTime > 1000) {
-        lastShakeTime = now;
-        if (isAsleep) wakeUp(false);
-        frighten();
-      }
-      resetSleepTimer();
-    };
-    if (typeof DeviceMotionEvent.requestPermission === 'function') {
-      // will request on first tap
-    } else {
-      window.addEventListener('devicemotion', motionHandler);
-    }
-    window._motionHandler = motionHandler;
-  }
-
-  // ---- TOUCH EVENTS ----
+  // ---- TOUCH ----
   robotWrap.addEventListener('touchstart', e => {
     e.preventDefault();
     if (isAsleep) { wakeUp(); return; }
 
-    // Request iOS permissions on first touch
-    if (!gyroPermissionAsked) {
-      startGyro();
-      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-        DeviceMotionEvent.requestPermission().then(s => {
-          if (s === 'granted' && window._motionHandler) window.addEventListener('devicemotion', window._motionHandler);
-        }).catch(() => {});
-      }
-    }
-
-    // Long press = tickle
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
       tickle();
     }, 500);
 
-    // Double tap = spin
     const now = Date.now();
     if (now - lastTapTime < 350) {
       clearTimeout(longPressTimer);
+      longPressTimer = null;
       spin();
     }
     lastTapTime = now;
@@ -573,7 +603,7 @@
     e.preventDefault();
     if (longPressTimer) {
       clearTimeout(longPressTimer);
-      // Normal tap
+      longPressTimer = null;
       if (!isSpinning) {
         msgIndex = (msgIndex + 1) % messages.length;
         showBubble(messages[msgIndex]);
@@ -584,14 +614,13 @@
         const rect = robotContainer.getBoundingClientRect();
         spawnParticles(rect.left + rect.width/2, rect.top + rect.height/2);
       }
-      longPressTimer = null;
     }
   }, { passive: false });
 
   // ---- CLICK (desktop) ----
   robotWrap.addEventListener('click', e => {
+    if (isMobile()) return;
     if (isAsleep) { wakeUp(); return; }
-    if (isMobile()) return; // handled by touch
     msgIndex = (msgIndex + 1) % messages.length;
     showBubble(messages[msgIndex]);
     robotWrap.classList.remove('wave');
@@ -602,30 +631,33 @@
     spawnParticles(rect.left + rect.width/2, rect.top + rect.height/2);
   });
 
-  robotWrap.addEventListener('mouseenter', () => { if (!isAsleep) showBubble(messages[msgIndex]); });
+  robotWrap.addEventListener('mouseenter', () => { if (!isAsleep && !isMobile()) showBubble(messages[msgIndex]); });
   robotWrap.addEventListener('mouseleave', () => {
     clearTimeout(robotWrap._t);
     robotWrap._t = setTimeout(() => robotBubble.classList.remove('visible'), 1800);
   });
 
-  // ---- AUTO GREETING ----
+  // ---- INIT ----
   if (!sessionStorage.getItem('visited')) {
     sessionStorage.setItem('visited', '1');
     setTimeout(() => {
       robotWrap.classList.add('wave');
       setTimeout(() => robotWrap.classList.remove('wave'), 600);
       showBubble("Hey! I'm OB-19! \uD83D\uDC4B", 4000);
-      if (isMobile()) startGyro();
     }, 2000);
-  } else {
-    if (isMobile()) startGyro();
   }
 
-  // ---- BLINK VARIANCE ----
+  if (isMobile()) startMobileBrowsing();
+
   setInterval(() => {
     document.querySelectorAll('.eye-blink-group').forEach(el => {
       el.style.animationDuration = (3.5 + Math.random()*3) + 's';
     });
+    // Vary browse interval slightly on mobile
+    if (isMobile() && mobileEyeInterval) {
+      stopMobileBrowsing();
+      startMobileBrowsing();
+    }
   }, 6000);
 
   resetSleepTimer();
