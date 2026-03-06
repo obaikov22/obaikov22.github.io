@@ -313,21 +313,26 @@
   let isAsleep = false;
   let isFrightened = false;
   let isSpinning = false;
+  let isPuduMode = false;
   let sleepTimer = null;
   let longPressTimer = null;
   let lastTapTime = 0;
   let shakeHistory = [];
   let lastMouseX = 0, lastMouseY = 0, lastMouseTime = Date.now();
+  let targetEyeX = 0, targetEyeY = 0;
+  let currentEyeX = 0, currentEyeY = 0;
+  const MAX_MOVE = 2.8;
+  const SLEEP_DELAY = 30000;
 
   const isMobile = () => window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
-  const robotWrap = document.getElementById('robotWrap');
-  const robotBubble = document.getElementById('robotBubble');
-  const pupilL = document.getElementById('pupilL');
-  const pupilR = document.getElementById('pupilR');
-  const shineL = document.getElementById('shineL');
-  const shineR = document.getElementById('shineR');
-  const robotEyes = document.getElementById('robotEyes');
+  const robotWrap    = document.getElementById('robotWrap');
+  const robotBubble  = document.getElementById('robotBubble');
+  const pupilL       = document.getElementById('pupilL');
+  const pupilR       = document.getElementById('pupilR');
+  const shineL       = document.getElementById('shineL');
+  const shineR       = document.getElementById('shineR');
+  const robotEyes    = document.getElementById('robotEyes');
   const robotContainer = document.getElementById('robotContainer');
 
   const eyeData = [
@@ -343,9 +348,14 @@
     @keyframes robotSleep { 0%,100%{transform:rotate(0deg) translateY(0)} 50%{transform:rotate(-8deg) translateY(3px)} }
     @keyframes robotSpin { 0%{transform:rotate(0deg) scale(1)} 50%{transform:rotate(180deg) scale(1.15)} 100%{transform:rotate(360deg) scale(1)} }
     @keyframes robotTickle { 0%,100%{transform:rotate(0) scale(1)} 20%{transform:rotate(-5deg) scale(1.05)} 40%{transform:rotate(5deg) scale(1.08)} 60%{transform:rotate(-4deg) scale(1.05)} 80%{transform:rotate(4deg) scale(1.03)} }
+    @keyframes robotExcited { 0%,100%{transform:translateY(0) scale(1)} 25%{transform:translateY(-10px) scale(1.1)} 50%{transform:translateY(-6px) scale(1.08)} 75%{transform:translateY(-12px) scale(1.12)} }
     @keyframes particleFly { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--px),var(--py)) scale(0);opacity:0} }
+    @keyframes puduFloat { 0%,100%{bottom:24px; right:24px;} 50%{bottom:28px; right:28px;} }
     .particle { position:fixed; border-radius:50%; pointer-events:none; animation:particleFly 0.7s ease-out forwards; z-index:9999; }
     .robot-wrap.spinning .robot-container { animation: robotSpin 0.6s cubic-bezier(0.23,1,0.32,1) forwards !important; }
+
+    /* Closed eyes (sleep) */
+    .eye-closed { transition: transform 0.3s ease; transform-box: fill-box; transform-origin: center; transform: scaleY(0.08) !important; }
   `;
   document.head.appendChild(extraStyle);
 
@@ -355,7 +365,7 @@
   zzzEl.style.cssText = `position:absolute;top:-28px;right:-8px;font-size:18px;font-weight:800;color:#a259ff;font-family:'DM Mono',monospace;letter-spacing:2px;opacity:0;transition:opacity 0.5s;pointer-events:none;line-height:1;text-shadow:0 0 10px rgba(162,89,255,0.8);`;
   robotContainer.appendChild(zzzEl);
   zzzEl.querySelectorAll('span').forEach((z, i) => {
-    z.style.cssText = `display:inline-block;animation:zFloat ${1.2 + i*0.3}s ease-in-out infinite ${i*0.25}s;`;
+    z.style.cssText = `display:inline-block;animation:zFloat ${1.2+i*0.3}s ease-in-out infinite ${i*0.25}s;`;
   });
 
   // ---- BUBBLE ----
@@ -366,12 +376,22 @@
     if (duration < 99999) robotWrap._t = setTimeout(() => robotBubble.classList.remove('visible'), duration);
   }
 
-  // ---- MOVE EYES (shared) ----
-  // Smooth interpolation state
-  let targetEyeX = 0, targetEyeY = 0;
-  let currentEyeX = 0, currentEyeY = 0;
-  const MAX_MOVE = 2.8;
+  // ---- EYE GROUPS for closing ----
+  const eyeGroupL = document.getElementById('eyeGroupL');
+  const eyeGroupR = document.getElementById('eyeGroupR');
 
+  function closeEyes() {
+    if (eyeGroupL) eyeGroupL.classList.add('eye-closed');
+    if (eyeGroupR) eyeGroupR.classList.add('eye-closed');
+    targetEyeX = 0; targetEyeY = 0;
+  }
+
+  function openEyes() {
+    if (eyeGroupL) eyeGroupL.classList.remove('eye-closed');
+    if (eyeGroupR) eyeGroupR.classList.remove('eye-closed');
+  }
+
+  // ---- SMOOTH EYE LOOP ----
   function applyEyes(nx, ny) {
     eyeData.forEach(eye => {
       eye.el.setAttribute('cx', eye.bx + nx);
@@ -381,7 +401,6 @@
     });
   }
 
-  // Smooth animation loop
   function eyeLoop() {
     currentEyeX += (targetEyeX - currentEyeX) * 0.08;
     currentEyeY += (targetEyeY - currentEyeY) * 0.08;
@@ -396,21 +415,18 @@
     if (isAsleep) wakeUp();
     resetSleepTimer();
 
-    // Shake detection
     const now = Date.now();
     const dt = Math.max(1, now - lastMouseTime);
     const speed = Math.sqrt(Math.pow(e.clientX-lastMouseX,2)+Math.pow(e.clientY-lastMouseY,2)) / dt;
     shakeHistory.push({ speed, time: now });
     shakeHistory = shakeHistory.filter(s => now - s.time < 400);
-    const avg = shakeHistory.reduce((a,b) => a + b.speed, 0) / shakeHistory.length;
+    const avg = shakeHistory.reduce((a,b) => a+b.speed, 0) / shakeHistory.length;
     if (avg > 3 && shakeHistory.length > 5) { frighten(); shakeHistory = []; }
     lastMouseX = e.clientX; lastMouseY = e.clientY; lastMouseTime = now;
 
     if (isAsleep || isFrightened) return;
-
     const rect = robotEyes.getBoundingClientRect();
     const sx = rect.width / 110, sy = rect.height / 140;
-    // Use left eye as reference center
     const ex = rect.left + eyeData[0].bx * sx;
     const ey = rect.top + eyeData[0].by * sy;
     const dx = e.clientX - ex, dy = e.clientY - ey;
@@ -419,14 +435,12 @@
     targetEyeY = dist > 0 ? (dy/dist)*Math.min(MAX_MOVE, dist/18) : 0;
   });
 
-  // ---- MOBILE: eyes browse the page ----
-  // Target elements on the page to "look at"
+  // ---- MOBILE: browse page ----
   const browseTargets = [
     '#projects', '#about', '#contact',
     '.card-title', '.section-title', '.hero h1',
     '.stat-num', '.skill-name', '.btn-primary'
   ];
-
   let browseIndex = 0;
   let mobileEyeInterval = null;
 
@@ -434,52 +448,33 @@
     const el = document.querySelector(selector);
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    // Only target visible elements
     if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
-    return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
-    };
+    return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
   }
 
   function browseNextElement() {
-    if (!isMobile() || isAsleep || isFrightened || isSpinning) return;
-
-    // Try to find a visible element to look at
-    let attempts = 0;
-    let target = null;
+    if (!isMobile() || isAsleep || isFrightened || isSpinning || isPuduMode) return;
+    let attempts = 0, target = null;
     while (!target && attempts < browseTargets.length) {
-      browseIndex = (browseIndex + 1) % browseTargets.length;
+      browseIndex = (browseIndex+1) % browseTargets.length;
       target = getElementCenter(browseTargets[browseIndex]);
       attempts++;
     }
-
     if (!target) {
-      // Nothing visible — look somewhere on screen gently
-      target = {
-        x: window.innerWidth * (0.2 + Math.random() * 0.6),
-        y: window.innerHeight * (0.2 + Math.random() * 0.6),
-      };
+      target = { x: window.innerWidth*(0.2+Math.random()*0.6), y: window.innerHeight*(0.2+Math.random()*0.6) };
     }
-
-    // Convert screen position to eye offset (-MAX_MOVE .. MAX_MOVE)
     const robotRect = robotEyes.getBoundingClientRect();
-    const robotCX = robotRect.left + robotRect.width / 2;
-    const robotCY = robotRect.top + robotRect.height / 2;
-    const dx = target.x - robotCX;
-    const dy = target.y - robotCY;
+    const dx = target.x - (robotRect.left + robotRect.width/2);
+    const dy = target.y - (robotRect.top + robotRect.height/2);
     const dist = Math.sqrt(dx*dx + dy*dy);
-    targetEyeX = dist > 0 ? (dx/dist) * MAX_MOVE : 0;
-    targetEyeY = dist > 0 ? (dy/dist) * MAX_MOVE : 0;
+    targetEyeX = dist > 0 ? (dx/dist)*MAX_MOVE : 0;
+    targetEyeY = dist > 0 ? (dy/dist)*MAX_MOVE : 0;
   }
 
   function startMobileBrowsing() {
     if (mobileEyeInterval) return;
-    // Look at a new element every 2-3 seconds
     browseNextElement();
-    mobileEyeInterval = setInterval(() => {
-      browseNextElement();
-    }, 2000 + Math.random() * 1000);
+    mobileEyeInterval = setInterval(browseNextElement, 2000 + Math.random()*1000);
   }
 
   function stopMobileBrowsing() {
@@ -487,23 +482,190 @@
     mobileEyeInterval = null;
   }
 
-  // Also update browse target on scroll (so robot follows what's on screen)
   window.addEventListener('scroll', () => {
     if (!isMobile()) return;
     resetSleepTimer();
     if (isAsleep) wakeUp();
-    // Look toward scroll direction immediately
     browseNextElement();
   }, { passive: true });
 
+  // ---- PUDU-OPS CARD DETECTION ----
+  let puduTriggered = false;
+  let puduObserver = null;
+
+  function setupPuduObserver() {
+    const puduCard = document.querySelector('.card-pudu');
+    if (!puduCard) return;
+
+    puduObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !puduTriggered && !isAsleep) {
+          puduTriggered = true;
+          triggerPuduReaction(puduCard);
+        }
+        // Reset when card leaves view so it can trigger again on scroll back
+        if (!entry.isIntersecting) {
+          setTimeout(() => { puduTriggered = false; }, 2000);
+        }
+      });
+    }, { threshold: 0.5 });
+
+    puduObserver.observe(puduCard);
+  }
+
+  let puduRAF = null;
+  let puduAttached = false;
+
+  function attachToCard(card) {
+    if (puduRAF) cancelAnimationFrame(puduRAF);
+    let returning = false;
+
+    function stick() {
+      if (!puduAttached) return;
+      const cardRect = card.getBoundingClientRect();
+      const wrapW = robotWrap.offsetWidth;
+      const wrapH = robotWrap.offsetHeight;
+
+      // Stick to bottom-right corner of card — NO clamp, follow freely off-screen
+      const targetLeft = cardRect.right  - wrapW * 0.6;
+      const targetTop  = cardRect.bottom - wrapH * 0.6;
+
+      robotWrap.style.left   = targetLeft + 'px';
+      robotWrap.style.top    = targetTop  + 'px';
+      robotWrap.style.right  = 'auto';
+      robotWrap.style.bottom = 'auto';
+
+      // Check if card has fully left the viewport
+      const cardGone = cardRect.bottom < -wrapH || cardRect.top > window.innerHeight + wrapH;
+
+      if (cardGone && !returning) {
+        returning = true;
+        puduAttached = false;
+        cancelAnimationFrame(puduRAF);
+        puduRAF = null;
+
+        // Small delay then fly back home
+        setTimeout(() => {
+          showBubble("See ya! \uD83D\uDE04", 2000);
+          robotWrap.style.transition = 'left 0.8s cubic-bezier(0.23,1,0.32,1), top 0.8s cubic-bezier(0.23,1,0.32,1)';
+          robotWrap.style.left = (window.innerWidth  - wrapW - 24) + 'px';
+          robotWrap.style.top  = (window.innerHeight - wrapH - 24) + 'px';
+          setTimeout(() => {
+            robotWrap.style.transition = '';
+            robotWrap.style.left   = 'auto';
+            robotWrap.style.top    = 'auto';
+            robotWrap.style.right  = '24px';
+            robotWrap.style.bottom = '24px';
+            isPuduMode = false;
+            if (isMobile()) startMobileBrowsing();
+          }, 850);
+        }, 200);
+        return;
+      }
+
+      // Eyes look at card center (when card is visible)
+      if (!cardGone) {
+        const cardCX = cardRect.left + cardRect.width  / 2;
+        const cardCY = cardRect.top  + cardRect.height / 2;
+        const robotRect = robotEyes.getBoundingClientRect();
+        const dx = cardCX - (robotRect.left + robotRect.width  / 2);
+        const dy = cardCY - (robotRect.top  + robotRect.height / 2);
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        targetEyeX = dist > 0 ? (dx/dist)*MAX_MOVE : 0;
+        targetEyeY = dist > 0 ? (dy/dist)*MAX_MOVE : 0;
+      }
+
+      puduRAF = requestAnimationFrame(stick);
+    }
+    stick();
+  }
+
+  function detachFromCard() {
+    puduAttached = false;
+    if (puduRAF) { cancelAnimationFrame(puduRAF); puduRAF = null; }
+    // Fly back home smoothly
+    robotWrap.style.transition = 'left 0.7s cubic-bezier(0.23,1,0.32,1), top 0.7s cubic-bezier(0.23,1,0.32,1)';
+    // Convert current position to bottom/right
+    const wrapW = robotWrap.offsetWidth;
+    const wrapH = robotWrap.offsetHeight;
+    robotWrap.style.left = (window.innerWidth  - wrapW - 24) + 'px';
+    robotWrap.style.top  = (window.innerHeight - wrapH - 24) + 'px';
+    setTimeout(() => {
+      robotWrap.style.transition = '';
+      robotWrap.style.left   = 'auto';
+      robotWrap.style.top    = 'auto';
+      robotWrap.style.right  = '24px';
+      robotWrap.style.bottom = '24px';
+      isPuduMode = false;
+      if (isMobile()) startMobileBrowsing();
+    }, 750);
+  }
+
+  function triggerPuduReaction(card) {
+    isPuduMode = true;
+    stopMobileBrowsing();
+
+    // Excited bounce + look at card
+    targetEyeX = -MAX_MOVE * 0.6;
+    targetEyeY = -MAX_MOVE;
+    robotContainer.style.animation = 'robotExcited 0.4s ease 2';
+    showBubble("Hey, that's me! \uD83E\uDD16\u2728", 3500);
+
+    setTimeout(() => {
+      // Step 1: snapshot current pixel position (right/bottom based)
+      const wrapRect = robotWrap.getBoundingClientRect();
+      const startLeft = wrapRect.left;
+      const startTop  = wrapRect.top;
+
+      // Step 2: switch to left/top WITHOUT moving (no transition yet)
+      robotWrap.style.transition = 'none';
+      robotWrap.style.right  = 'auto';
+      robotWrap.style.bottom = 'auto';
+      robotWrap.style.left   = startLeft + 'px';
+      robotWrap.style.top    = startTop  + 'px';
+
+      // Step 3: force reflow so browser registers the new position
+      void robotWrap.offsetWidth;
+
+      // Step 4: spin
+      robotWrap.classList.add('spinning');
+      setTimeout(() => robotWrap.classList.remove('spinning'), 700);
+
+      // Step 5: now animate smoothly to card
+      const cardRect = card.getBoundingClientRect();
+      const wrapW = robotWrap.offsetWidth;
+      const wrapH = robotWrap.offsetHeight;
+      const destLeft = cardRect.right  - wrapW * 0.6;
+      const destTop  = cardRect.bottom - wrapH * 0.6;
+
+      robotWrap.style.transition = 'left 0.9s cubic-bezier(0.23,1,0.32,1), top 0.9s cubic-bezier(0.23,1,0.32,1)';
+      robotWrap.style.left = destLeft + 'px';
+      robotWrap.style.top  = destTop  + 'px';
+
+      // Step 6: after landing — switch to RAF-based sticking
+      setTimeout(() => {
+        robotWrap.style.transition = '';
+        robotContainer.style.animation = 'robotFloat 3s ease-in-out infinite';
+        const rect2 = robotContainer.getBoundingClientRect();
+        spawnParticles(rect2.left + rect2.width/2, rect2.top + rect2.height/2);
+        puduAttached = true;
+        attachToCard(card);
+        showBubble("I run 19 of these! \uD83D\uDE80", 4000);
+      }, 950);
+
+    }, 500);
+
+    // No forced detach — robot stays until card scrolls off screen
+  }
+
   // ---- SLEEP ----
   function goSleep() {
-    if (isAsleep || isFrightened || isSpinning) return;
+    if (isAsleep || isFrightened || isSpinning || isPuduMode) return;
     isAsleep = true;
     stopMobileBrowsing();
     zzzEl.style.opacity = '1';
     robotContainer.style.animation = 'robotSleep 2s ease-in-out infinite';
-    targetEyeX = 0; targetEyeY = 1.5; // eyes droop down
+    closeEyes();
     showBubble('Zzz... \uD83D\uDE34', 99999);
   }
 
@@ -511,6 +673,7 @@
     if (!isAsleep) return;
     isAsleep = false;
     zzzEl.style.opacity = '0';
+    openEyes();
     robotContainer.style.animation = 'robotFloat 3s ease-in-out infinite';
     if (greet) showBubble("Oh! You're back! \uD83E\uDD16", 2500);
     resetSleepTimer();
@@ -519,12 +682,12 @@
 
   function resetSleepTimer() {
     clearTimeout(sleepTimer);
-    if (!isAsleep) sleepTimer = setTimeout(goSleep, 14000);
+    if (!isAsleep) sleepTimer = setTimeout(goSleep, SLEEP_DELAY);
   }
 
   // ---- FRIGHT ----
   function frighten() {
-    if (isFrightened || isAsleep || isSpinning) return;
+    if (isFrightened || isAsleep || isSpinning || isPuduMode) return;
     isFrightened = true;
     robotContainer.style.animation = 'robotShake 0.5s ease';
     showBubble("Whoa!! \uD83D\uDE31", 1500);
@@ -538,7 +701,7 @@
 
   // ---- TICKLE ----
   function tickle() {
-    if (isAsleep || isSpinning) return;
+    if (isAsleep || isSpinning || isPuduMode) return;
     robotContainer.style.animation = 'robotTickle 0.5s ease';
     showBubble("Hehe, stop it! \uD83D\uDE02", 2000);
     eyeData.forEach(e => { e.el.style.fill = '#ff6bbd'; });
@@ -552,7 +715,7 @@
 
   // ---- SPIN ----
   function spin() {
-    if (isAsleep || isSpinning) return;
+    if (isAsleep || isSpinning || isPuduMode) return;
     isSpinning = true;
     robotWrap.classList.add('spinning');
     showBubble("Weeee! \uD83C\uDF00", 2000);
@@ -571,9 +734,9 @@
     for (let i = 0; i < 14; i++) {
       const p = document.createElement('div');
       p.className = 'particle';
-      const size = 5 + Math.random() * 7;
-      const angle = (Math.PI * 2 / 14) * i + (Math.random() - 0.5) * 0.4;
-      const dist = 50 + Math.random() * 70;
+      const size = 5 + Math.random()*7;
+      const angle = (Math.PI*2/14)*i + (Math.random()-0.5)*0.4;
+      const dist = 50 + Math.random()*70;
       p.style.cssText = `width:${size}px;height:${size}px;background:${colors[Math.floor(Math.random()*colors.length)]};left:${x-size/2}px;top:${y-size/2}px;--px:${Math.cos(angle)*dist}px;--py:${Math.sin(angle)*dist-20}px;box-shadow:0 0 6px currentColor;`;
       document.body.appendChild(p);
       setTimeout(() => p.remove(), 750);
@@ -584,16 +747,10 @@
   robotWrap.addEventListener('touchstart', e => {
     e.preventDefault();
     if (isAsleep) { wakeUp(); return; }
-
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      tickle();
-    }, 500);
-
+    longPressTimer = setTimeout(() => { longPressTimer = null; tickle(); }, 500);
     const now = Date.now();
     if (now - lastTapTime < 350) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+      clearTimeout(longPressTimer); longPressTimer = null;
       spin();
     }
     lastTapTime = now;
@@ -602,10 +759,9 @@
   robotWrap.addEventListener('touchend', e => {
     e.preventDefault();
     if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-      if (!isSpinning) {
-        msgIndex = (msgIndex + 1) % messages.length;
+      clearTimeout(longPressTimer); longPressTimer = null;
+      if (!isSpinning && !isPuduMode) {
+        msgIndex = (msgIndex+1) % messages.length;
         showBubble(messages[msgIndex]);
         robotWrap.classList.remove('wave');
         void robotWrap.offsetWidth;
@@ -618,10 +774,11 @@
   }, { passive: false });
 
   // ---- CLICK (desktop) ----
-  robotWrap.addEventListener('click', e => {
+  robotWrap.addEventListener('click', () => {
     if (isMobile()) return;
     if (isAsleep) { wakeUp(); return; }
-    msgIndex = (msgIndex + 1) % messages.length;
+    if (isPuduMode) return;
+    msgIndex = (msgIndex+1) % messages.length;
     showBubble(messages[msgIndex]);
     robotWrap.classList.remove('wave');
     void robotWrap.offsetWidth;
@@ -648,15 +805,14 @@
   }
 
   if (isMobile()) startMobileBrowsing();
+  setupPuduObserver();
 
   setInterval(() => {
     document.querySelectorAll('.eye-blink-group').forEach(el => {
       el.style.animationDuration = (3.5 + Math.random()*3) + 's';
     });
-    // Vary browse interval slightly on mobile
-    if (isMobile() && mobileEyeInterval) {
-      stopMobileBrowsing();
-      startMobileBrowsing();
+    if (isMobile() && mobileEyeInterval && !isPuduMode) {
+      stopMobileBrowsing(); startMobileBrowsing();
     }
   }, 6000);
 
