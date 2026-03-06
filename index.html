@@ -576,8 +576,8 @@
     background: radial-gradient(circle, #6c63ff08, transparent 70%);
     pointer-events: none;
     z-index: 0;
-    transform: translate(-50%, -50%);
-    transition: left 0.15s ease, top 0.15s ease;
+    top: 0; left: 0;
+    will-change: transform;
   }
 </style>
 </head>
@@ -745,8 +745,8 @@
       <h2>Let's work together</h2>
       <p>Have an app idea? Looking for a Flutter developer for a project? I'd love to hear from you.</p>
       <div class="contact-links">
-        <a href="mailto:obaikov22@gmail.com" class="btn btn-primary">
-          ✉ obaikov22@gmail.com
+        <a href="/cdn-cgi/l/email-protection#c4aba6a5adafabb2f6f684a3a9a5ada8eaa7aba9" class="btn btn-primary">
+          ✉ <span class="__cf_email__" data-cfemail="78171a191113170e4a4a381f15191114561b1715">[email&#160;protected]</span>
         </a>
         <a href="https://github.com/obaikov22" target="_blank" class="btn btn-ghost">
           ⌥ github.com/obaikov22
@@ -763,26 +763,20 @@
 
 </div>
 
-<script>
-  // Cursor glow
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+  // Cursor glow — smooth 60fps with lerp
   const glow = document.getElementById('cursorGlow');
-  document.addEventListener('mousemove', e => {
-    glow.style.left = e.clientX + 'px';
-    glow.style.top = e.clientY + 'px';
-  });
+  let mx = 0, my = 0, cx = 0, cy = 0;
+  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+  function animateGlow() {
+    cx += (mx - cx) * 0.08;
+    cy += (my - cy) * 0.08;
+    glow.style.transform = `translate(${cx - 150}px, ${cy - 150}px)`;
+    requestAnimationFrame(animateGlow);
+  }
+  animateGlow();
 
   // Scroll reveal
   const reveals = document.querySelectorAll('.reveal');
   const observer = new IntersectionObserver(entries => {
-    entries.forEach(e => {
-      if (e.isIntersecting) {
-        e.target.classList.add('visible');
-        observer.unobserve(e.target);
-      }
-    });
-  }, { threshold: 0.1 });
-
-  reveals.forEach(el => observer.observe(el));
-</script>
-</body>
-</html>
+    entries
